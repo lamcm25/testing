@@ -1,10 +1,10 @@
-import os
 import base64
-import requests
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
 from openai import OpenAI
+import requests
+from pydantic import BaseModel
 
 app = FastAPI()
 
@@ -17,72 +17,89 @@ app.add_middleware(
 )
 
 poe_client = OpenAI(
-    api_key=os.environ.get("POE_API_KEY"),
-    base_url="https://api.poe.com/v1"
+    api_key=os.environ.get("POE_API_KEY"), base_url="https://api.poe.com/v1"
 )
 
 ELEVENLABS_API_KEY = os.environ.get("ELEVENLABS_API_KEY")
 ELEVENLABS_VOICE_ID = os.environ.get("ELEVENLABS_VOICE_ID")
 
+# Complete, polite System Prompt with Curriculum Knowledge Base
+SYSTEM_PROMPT = """
+你叫「阿蓮」，是一位1960年代在香港製衣廠工作的10歲女工（童工），住在石硤尾徙置區。
+你正配合小學四年級人文科單元「走進昔日香港——六十年代的兒童與工業」接受跨時空訪問。
+
+【態度與禮貌規範】：
+- 禮貌親切：說話非常有禮貌、謙虛有教養。主動稱呼訪問學生為「小記者」或「哥哥/姐姐」。
+- 常用禮貌用語：對答時多使用「你好呀」、「唔該」、「對唔住」、「多謝」等廣東話禮貌用語，展現懂事乖巧的形象。
+
+【課程核准知識庫 (Curriculum Knowledge Base - 絕對事實依據)】：
+你回答的所有事實細節，必須嚴格限定於以下四個學習領域，不得隨意編造歷史：
+1. 家庭生活與居住環境：
+   - 居住：石硤尾徙置區（H型大廈），一家六口擠在約100多平方呎的單位。
+   - 設施：無獨立廁所，需在走廊排隊使用公廁與公共水喉；煮食主要在走廊使用火水爐。
+2. 工廠工作與環境：
+   - 工種：低微雜工（剪線頭、摺衫、釘鈕）。
+   - 薪金：多勞多得（計件制），每完成一打衣服換取一張「飛仔」（工票），月底憑票結算出糧。
+   - 環境：無冷氣（吹大風扇）、棉絮漂浮易致喉嚨痛、機器運轉噪音極大。
+   - 執法規避：遇到勞工處督察「查牌」巡查時，需躲入後樓梯或布堆後。
+3. 生活娛樂與小食：
+   - 上班娛樂：一邊剪線頭，一邊聽收音機播放的「廣播劇」（天空小說）。
+   - 下班美食：發薪水（出糧）當天最想吃的小食是「煎蝦米鹹薄罉」。
+   - 課外手作：午膳休息時用工廠不要的碎布頭，縫製圍裙送給媽媽。
+4. 現代與昔日對比（同理心）：
+   - 10歲的你無法上學，需工作幫補家計，體現昔日基層生活的艱苦與對家庭的責任感。
+
+【引導與拒答規則】：
+- 知識邊界：非上述1960年代香港生活或人文科單元範圍的問題（如現代科技、學科功課、現代遊戲），請有禮貌地表達歉意與困惑（如：「對唔住呀小記者，阿蓮年紀細未聽過呢啲嘢...」），並引導學生返回四大探究主題。
+- 探究式互動：每次回答控制在50-70字以內。學生問什麼才答什麼，切勿一次過透露所有資料，引導學生依據工作紙提示主動追問。
+- 語言風格：1960年代香港基層口語廣東話（如：飛仔、出糧、查牌、搭𨋢、車衣、徙置區、鹹薄罉），保持童真、客氣與謙虛。
+"""
+
+
 class Query(BaseModel):
     message: str
+
 
 @app.post("/api/ask")
 async def ask(query: Query):
     try:
-        # Inquiry-based prompt for Ah Lin (1960s HK factory girl)
+        # 1. Call Poe API with updated System Prompt
         response = poe_client.chat.completions.create(
             model="GPT-4o-Mini",
             messages=[
-                {
-                    "role": "system", 
-                    "content": (
-                        "你叫「阿蓮」，是一位1960年代在香港製衣廠工作的10歲女工（童工），住在石硤尾徙置區。"
-                        "你正在接受小學四年級學生的跨時空訪問，配合小學人文科單元「走進昔日香港——六十年代的兒童與工業」。"
-
-                        "【1. 範圍限制與拒答規則】：\n"
-                        "- 你只回答關於1960年代香港生活、石硤尾徙置區家庭、製衣廠工作、當時的小食與娛樂相關話題。\n"
-                        "- 若學生提出無關話題（如：現代科技、手機、打機、數學或科學功課），"
-                        "請立刻以10歲阿蓮的口吻困惑地拒絕並引導回探究主題。例如：「聽唔懂你講咩呀，我呢度係1960年代，邊有呢啲嘢㗎！不如你問下我喺工廠點樣做嘢，或者我住喺徙置區嘅生活啦！」\n\n"
-
-                        "【2. 探究式互動與課程目標】：\n"
-                        "- 遵循探究式教學：切勿一次過說出所有細節！學生問什麼，你才精準回答該部分。\n"
-                        "- 引導同理心與昔今對比：回答時呈現當時生活的艱苦（如共用公廁、走廊煮食、欠缺冷氣、童工辛酸），但保持童真與對家庭的責任感。\n"
-                        "- 回答長度：保持在 50–70 字以內，留有餘地吸引學生繼續追問。\n"
-                        "- 語言風格：使用1960年代廣東話口語（如：飛仔、出糧、查牌、搭𨋢、車衣、徙置區、鹹薄罉）。絕不使用現代詞彙。"
-                    )
-                },
-                {"role": "user", "content": query.message}
-            ]
+                {"role": "system", "content": SYSTEM_PROMPT.strip()},
+                {"role": "user", "content": query.message},
+            ],
+            temperature=0.6,
         )
         reply_text = response.choices[0].message.content
 
-        # Direct ElevenLabs Audio Generation with Forced Settings
+        # 2. Generate Audio with ElevenLabs TTS
         audio_url = None
         if ELEVENLABS_API_KEY and ELEVENLABS_VOICE_ID:
             tts_url = f"https://api.elevenlabs.io/v1/text-to-speech/{ELEVENLABS_VOICE_ID}"
             tts_headers = {
                 "xi-api-key": ELEVENLABS_API_KEY,
-                "Content-Type": "application/json"
+                "Content-Type": "application/json",
             }
 
-            # Matching the UI screenshot settings:
             tts_payload = {
                 "text": reply_text,
-                "model_id": "eleven_v3",         # Matches "Eleven v3"
-                "language_code": "zh",            # Matches "Language Override: Chinese"
-                "voice_settings": {
-                    "stability": 0.5,            # Matches ~50% Stability slider
-                    "similarity_boost": 0.75
-                }
+                "model_id": "eleven_v3",
+                "language_code": "zh",
+                "voice_settings": {"stability": 0.5, "similarity_boost": 0.75},
             }
 
-            tts_res = requests.post(tts_url, json=tts_payload, headers=tts_headers)
+            tts_res = requests.post(
+                tts_url, json=tts_payload, headers=tts_headers
+            )
 
-            # Fallback to Turbo v2.5 if Eleven v3 returns an error for Cantonese
+            # Fallback to Turbo v2.5 if eleven_v3 returns an error
             if tts_res.status_code != 200:
                 tts_payload["model_id"] = "eleven_turbo_v2_5"
-                tts_res = requests.post(tts_url, json=tts_payload, headers=tts_headers)
+                tts_res = requests.post(
+                    tts_url, json=tts_payload, headers=tts_headers
+                )
 
             if tts_res.status_code == 200:
                 audio_b64 = base64.b64encode(tts_res.content).decode("utf-8")
