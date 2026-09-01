@@ -1,9 +1,9 @@
 import base64
 import os
+import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from openai import OpenAI
-import requests
+from openai import AsyncOpenAI
 from pydantic import BaseModel
 
 app = FastAPI()
@@ -16,14 +16,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-poe_client = OpenAI(
-    api_key=os.environ.get("POE_API_KEY"), base_url="https://api.poe.com/v1"
+# Use AsyncOpenAI for non-blocking execution
+poe_client = AsyncOpenAI(
+    api_key=os.environ.get("OPENAI_API_KEY") or os.environ.get("POE_API_KEY"),
+    base_url=os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1"),
 )
 
 ELEVENLABS_API_KEY = os.environ.get("ELEVENLABS_API_KEY")
 ELEVENLABS_VOICE_ID = os.environ.get("ELEVENLABS_VOICE_ID")
 
-# Complete, polite System Prompt with Curriculum Knowledge Base
 SYSTEM_PROMPT = """
 你叫「阿蓮」，是一位1960年代在香港製衣廠工作的10歲女工（童工），住在石硤尾徙置區。
 你正配合小學四年級人文科單元「走進昔日香港——六十年代的兒童與工業」接受跨時空訪問。
@@ -63,21 +64,22 @@ class Query(BaseModel):
 @app.post("/api/ask")
 async def ask(query: Query):
     try:
-        # 1. Call Poe API with updated System Prompt
-        response = poe_client.chat.completions.create(
-            model="GPT-4o-Mini",
+        # 1. Fast LLM Text Generation
+        response = await poe_client.chat.completions.create(
+            model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT.strip()},
                 {"role": "user", "content": query.message},
             ],
-            temperature=0.6,
+            temperature=0.5,
+            max_tokens=100,  # Shorter text = faster eleven_v3 synthesis
         )
         reply_text = response.choices[0].message.content
 
-        # 2. Generate Audio with ElevenLabs TTS
         audio_url = None
         if ELEVENLABS_API_KEY and ELEVENLABS_VOICE_ID:
-            tts_url = f"https://api.elevenlabs.io/v1/text-to-speech/{ELEVENLABS_VOICE_ID}"
+            # Added optimize_streaming_latency=3 to speed up eleven_v3 generation
+            tts_url = f"https://api.elevenlabs.io/v1/text-to-speech/{ELEVENLABS_VOICE_ID}?optimize_streaming_latency=3"
             tts_headers = {
                 "xi-api-key": ELEVENLABS_API_KEY,
                 "Content-Type": "application/json",
@@ -90,20 +92,16 @@ async def ask(query: Query):
                 "voice_settings": {"stability": 0.5, "similarity_boost": 0.75},
             }
 
-            tts_res = requests.post(
-                tts_url, json=tts_payload, headers=tts_headers
-            )
-
-            # Fallback to Turbo v2.5 if eleven_v3 returns an error
-            if tts_res.status_code != 200:
-                tts_payload["model_id"] = "eleven_turbo_v2_5"
-                tts_res = requests.post(
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                tts_res = await client.post(
                     tts_url, json=tts_payload, headers=tts_headers
                 )
 
-            if tts_res.status_code == 200:
-                audio_b64 = base64.b64encode(tts_res.content).decode("utf-8")
-                audio_url = f"data:audio/mp3;base64,{audio_b64}"
+                if tts_res.status_code == 200:
+                    audio_b64 = base64.b64encode(tts_res.content).decode(
+                        "utf-8"
+                    )
+                    audio_url = f"data:audio/mp3;base64,{audio_b64}"
 
         return {"text": reply_text, "audio_url": audio_url}
 
