@@ -29,11 +29,6 @@ else:
 CANTONESE_AI_API_KEY = os.environ.get("CANTONESE_AI_API_KEY")
 CANTONESE_AI_VOICE = os.environ.get("CANTONESE_AI_VOICE")
 
-# Valid API model_id options are: "v2", "v3", "v4", "v5", "v6"
-CANTONESE_AI_MODEL = os.environ.get("CANTONESE_AI_MODEL", "v6").lower()
-if CANTONESE_AI_MODEL not in ["v2", "v3", "v4", "v5", "v6"]:
-    CANTONESE_AI_MODEL = "v6"
-
 SYSTEM_PROMPT = """
 你叫「阿蓮」，是一位1960年代在香港製衣廠工作的10歲女工（童工），住在石硤尾徙置區。
 你正配合小學四年級人文科單元「走進昔日香港——六十年代的兒童與工業」接受跨時空訪問。
@@ -97,9 +92,7 @@ async def ask(query: Query):
             payload = {
                 "api_key": CANTONESE_AI_API_KEY,
                 "text": reply_text,
-                "model_id": CANTONESE_AI_MODEL,
                 "output_extension": "mp3",
-                "language": "cantonese",
             }
 
             if CANTONESE_AI_VOICE:
