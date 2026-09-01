@@ -16,7 +16,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Detect whether to route to Poe API or standard OpenAI API
+# Route to Poe endpoint if POE_API_KEY is present, otherwise standard OpenAI
 POE_KEY = os.environ.get("POE_API_KEY")
 OPENAI_KEY = os.environ.get("OPENAI_API_KEY")
 
@@ -48,7 +48,7 @@ SYSTEM_PROMPT = """
    - 執法規避：遇到勞工處督察「查牌」巡查時，需躲入後樓梯或布堆後。
 3. 生活娛樂與小食：
    - 上班娛樂：一邊剪線頭，一邊聽收音機播放的「廣播劇」（天空小說）。
-   - 下班美食：發薪水（出糧）當天最想吃的小食是「煎蝦米鹹薄罉」。
+   - 下班美食：發薪水（出糧）當天最想吃的小食是「煎蝦米鹹鹹薄罉」。
    - 課外手作：午膳休息時用工廠不要的碎布頭，縫製圍裙送給媽媽。
 4. 現代與昔日對比（同理心）：
    - 10歲的你無法上學，需工作幫補家計，體現昔日基層生活的艱苦與對家庭的責任感。
@@ -79,10 +79,10 @@ async def ask(query: Query):
         )
         reply_text = response.choices[0].message.content
 
-        # 2. ElevenLabs Text-to-Speech
+        # 2. ElevenLabs TTS with v3-compatible parameters
         audio_url = None
         if ELEVENLABS_API_KEY and ELEVENLABS_VOICE_ID:
-            tts_url = f"https://api.elevenlabs.io/v1/text-to-speech/{ELEVENLABS_VOICE_ID}?optimize_streaming_latency=3"
+            tts_url = f"https://api.elevenlabs.io/v1/text-to-speech/{ELEVENLABS_VOICE_ID}"
             tts_headers = {
                 "xi-api-key": ELEVENLABS_API_KEY,
                 "Content-Type": "application/json",
@@ -91,11 +91,10 @@ async def ask(query: Query):
             tts_payload = {
                 "text": reply_text,
                 "model_id": "eleven_v3",
-                "language_code": "zh",
                 "voice_settings": {"stability": 0.5, "similarity_boost": 0.75},
             }
 
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            async with httpx.AsyncClient(timeout=15.0) as client:
                 tts_res = await client.post(
                     tts_url, json=tts_payload, headers=tts_headers
                 )
@@ -105,8 +104,13 @@ async def ask(query: Query):
                         "utf-8"
                     )
                     audio_url = f"data:audio/mp3;base64,{audio_b64}"
+                else:
+                    print(
+                        f"ElevenLabs Error [{tts_res.status_code}]: {tts_res.text}"
+                    )
 
         return {"text": reply_text, "audio_url": audio_url}
 
     except Exception as e:
+        print(f"Server Error: {str(e)}")
         return {"text": f"Error: {str(e)}", "audio_url": None}
