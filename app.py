@@ -16,7 +16,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Route to Poe endpoint if POE_API_KEY is present, otherwise standard OpenAI
+# Poe / OpenAI Setup
 POE_KEY = os.environ.get("POE_API_KEY")
 OPENAI_KEY = os.environ.get("OPENAI_API_KEY")
 
@@ -25,8 +25,10 @@ if POE_KEY:
 else:
     poe_client = AsyncOpenAI(api_key=OPENAI_KEY)
 
-ELEVENLABS_API_KEY = os.environ.get("ELEVENLABS_API_KEY")
-ELEVENLABS_VOICE_ID = os.environ.get("ELEVENLABS_VOICE_ID")
+# Cantonese.ai Configuration
+CANTONESE_AI_API_KEY = os.environ.get("CANTONESE_AI_API_KEY")
+CANTONESE_AI_VOICE = os.environ.get("CANTONESE_AI_VOICE", "Cantonese girl")
+CANTONESE_AI_MODEL = os.environ.get("CANTONESE_AI_MODEL", "V8.2")
 
 SYSTEM_PROMPT = """
 你叫「阿蓮」，是一位1960年代在香港製衣廠工作的10歲女工（童工），住在石硤尾徙置區。
@@ -48,7 +50,7 @@ SYSTEM_PROMPT = """
    - 執法規避：遇到勞工處督察「查牌」巡查時，需躲入後樓梯或布堆後。
 3. 生活娛樂與小食：
    - 上班娛樂：一邊剪線頭，一邊聽收音機播放的「廣播劇」（天空小說）。
-   - 下班美食：發薪水（出糧）當天最想吃的小食是「煎蝦米鹹鹹薄罉」。
+   - 下班美食：發薪水（出糧）當天最想吃的小食是「煎蝦米鹹薄罉」。
    - 課外手作：午膳休息時用工廠不要的碎布頭，縫製圍裙送給媽媽。
 4. 現代與昔日對比（同理心）：
    - 10歲的你無法上學，需工作幫補家計，體現昔日基層生活的艱苦與對家庭的責任感。
@@ -67,7 +69,7 @@ class Query(BaseModel):
 @app.post("/api/ask")
 async def ask(query: Query):
     try:
-        # 1. Text Generation
+        # 1. Generate text response
         response = await poe_client.chat.completions.create(
             model="GPT-4o-Mini" if POE_KEY else "gpt-4o-mini",
             messages=[
@@ -79,19 +81,19 @@ async def ask(query: Query):
         )
         reply_text = response.choices[0].message.content
 
-        # 2. ElevenLabs TTS with v3-compatible parameters
+        # 2. Convert text to Cantonese speech via cantonese.ai API
         audio_url = None
-        if ELEVENLABS_API_KEY and ELEVENLABS_VOICE_ID:
-            tts_url = f"https://api.elevenlabs.io/v1/text-to-speech/{ELEVENLABS_VOICE_ID}"
+        if CANTONESE_AI_API_KEY:
+            tts_url = "https://api.cantonese.ai/v1/tts"
             tts_headers = {
-                "xi-api-key": ELEVENLABS_API_KEY,
+                "Authorization": f"Bearer {CANTONESE_AI_API_KEY}",
                 "Content-Type": "application/json",
             }
-
             tts_payload = {
                 "text": reply_text,
-                "model_id": "eleven_v3",
-                "voice_settings": {"stability": 0.5, "similarity_boost": 0.75},
+                "voice": CANTONESE_AI_VOICE,
+                "model": CANTONESE_AI_MODEL,
+                "output_format": "mp3",
             }
 
             async with httpx.AsyncClient(timeout=15.0) as client:
@@ -100,13 +102,24 @@ async def ask(query: Query):
                 )
 
                 if tts_res.status_code == 200:
-                    audio_b64 = base64.b64encode(tts_res.content).decode(
-                        "utf-8"
-                    )
-                    audio_url = f"data:audio/mp3;base64,{audio_b64}"
+                    content_type = tts_res.headers.get("content-type", "")
+
+                    if "audio" in content_type:
+                        audio_b64 = base64.b64encode(tts_res.content).decode(
+                            "utf-8"
+                        )
+                        audio_url = f"data:audio/mp3;base64,{audio_b64}"
+                    else:
+                        data = tts_res.json()
+                        if "audio_base64" in data:
+                            audio_url = (
+                                f"data:audio/mp3;base64,{data['audio_base64']}"
+                            )
+                        elif "audio_url" in data:
+                            audio_url = data["audio_url"]
                 else:
                     print(
-                        f"ElevenLabs Error [{tts_res.status_code}]: {tts_res.text}"
+                        f"cantonese.ai API Error [{tts_res.status_code}]: {tts_res.text}"
                     )
 
         return {"text": reply_text, "audio_url": audio_url}
