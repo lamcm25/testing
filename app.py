@@ -1,5 +1,6 @@
 import os
 import time
+import json
 import requests
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -31,27 +32,27 @@ class Query(BaseModel):
 @app.post("/api/ask")
 async def ask(query: Query):
     try:
-        # 1. Generate text response from Poe API
+        # 1. Ask Poe AI
         response = poe_client.chat.completions.create(
             model="GPT-4o-Mini",
             messages=[
-                {"role": "system", "content": "你是一位親切的小學人文科 AI 導師，請用語音簡潔、生動的廣東話回答小學生的問題（答複請保持在60字以內）。"},
+                {"role": "system", "content": "你是一位親切的小學人文科 AI 導師，請用語音簡潔、生動的廣東話回答小學生的問題（回答請保持在50字以內）。"},
                 {"role": "user", "content": query.message}
             ]
         )
         reply_text = response.choices[0].message.content
 
-        # 2. Trigger D-ID video creation with ElevenLabs TTS
+        # 2. Trigger D-ID video generation
         if DID_API_KEY:
             did_headers = {
                 "Authorization": f"Basic {DID_API_KEY}",
                 "Content-Type": "application/json"
             }
             if ELEVENLABS_API_KEY:
-                did_headers["x-api-key-external"] = f'{{"elevenlabs": "{ELEVENLABS_API_KEY}"}}'
+                did_headers["x-api-key-external"] = json.dumps({"elevenlabs": ELEVENLABS_API_KEY})
 
             did_payload = {
-                "source_url": "https://testing824.vercel.app/avatar.png",
+                "source_url": "https://raw.githubusercontent.com/lamcm25/testing/main/avatar.png",
                 "script": {
                     "type": "text",
                     "input": reply_text,
@@ -65,10 +66,10 @@ async def ask(query: Query):
             talk_res = requests.post("https://api.d-id.com/talks", json=did_payload, headers=did_headers)
             talk_id = talk_res.json().get("id")
 
-            # 3. Poll D-ID until the video finishes generating
+            # 3. Poll D-ID until completed
             video_url = None
             if talk_id:
-                for _ in range(20):
+                for _ in range(25):
                     time.sleep(1)
                     status_res = requests.get(f"https://api.d-id.com/talks/{talk_id}", headers=did_headers)
                     status_data = status_res.json()
