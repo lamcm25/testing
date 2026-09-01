@@ -28,7 +28,7 @@ else:
 # Cantonese.ai Configuration
 CANTONESE_AI_API_KEY = os.environ.get("CANTONESE_AI_API_KEY")
 CANTONESE_AI_VOICE = os.environ.get("CANTONESE_AI_VOICE")
-CANTONESE_AI_MODEL = os.environ.get("CANTONESE_AI_MODEL", "V8.2")
+CANTONESE_AI_MODEL = os.environ.get("CANTONESE_AI_MODEL", "v6")
 
 SYSTEM_PROMPT = """
 你叫「阿蓮」，是一位1960年代在香港製衣廠工作的10歲女工（童工），住在石硤尾徙置區。
@@ -71,7 +71,7 @@ async def ask(query: Query):
     audio_url = None
 
     try:
-        # 1. Text Generation
+        # 1. Generate text response
         response = await poe_client.chat.completions.create(
             model="GPT-4o-Mini" if POE_KEY else "gpt-4o-mini",
             messages=[
@@ -83,60 +83,33 @@ async def ask(query: Query):
         )
         reply_text = response.choices[0].message.content
 
-        # 2. Cantonese.ai TTS Generation
+        # 2. Convert text to Cantonese speech
         if CANTONESE_AI_API_KEY:
-            # Correct Cantonese.ai endpoint
-            tts_url = "https://api.cantonese.ai/v1/text-to-speech"
+            tts_url = "https://cantonese.ai/api/tts"
             headers = {
-                "Authorization": f"Bearer {CANTONESE_AI_API_KEY}",
                 "Content-Type": "application/json",
+                "User-Agent": "Mozilla/5.0",
             }
             payload = {
                 "api_key": CANTONESE_AI_API_KEY,
                 "text": reply_text,
-                "voice_id": CANTONESE_AI_VOICE,
-                "model": CANTONESE_AI_MODEL,
-                "output_format": "mp3",
+                "output_extension": "mp3",
             }
+
+            if CANTONESE_AI_VOICE:
+                payload["voice_id"] = CANTONESE_AI_VOICE
+            if CANTONESE_AI_MODEL:
+                payload["model_id"] = CANTONESE_AI_MODEL
 
             async with httpx.AsyncClient(timeout=15.0) as client:
                 res = await client.post(tts_url, json=payload, headers=headers)
 
-                # Fallback to alternate endpoint if path differs
-                if res.status_code == 404:
-                    tts_url = "https://api.cantonese.ai/v1/tts"
-                    res = await client.post(
-                        tts_url, json=payload, headers=headers
-                    )
-
                 if res.status_code == 200:
-                    content_type = res.headers.get("content-type", "")
-                    if "audio" in content_type or len(res.content) > 500:
-                        audio_b64 = base64.b64encode(res.content).decode(
-                            "utf-8"
-                        )
-                        audio_url = f"data:audio/mp3;base64,{audio_b64}"
-                    else:
-                        try:
-                            data = res.json()
-                            b64 = (
-                                data.get("audio_base64")
-                                or data.get("audio")
-                                or data.get("data")
-                            )
-                            if b64:
-                                audio_url = f"data:audio/mp3;base64,{b64}"
-                            elif "url" in data or "audio_url" in data:
-                                audio_url = data.get("url") or data.get(
-                                    "audio_url"
-                                )
-                        except Exception as parse_err:
-                            print(
-                                f"[Cantonese.ai Parse Error]: {str(parse_err)}"
-                            )
+                    audio_b64 = base64.b64encode(res.content).decode("utf-8")
+                    audio_url = f"data:audio/mp3;base64,{audio_b64}"
                 else:
                     print(
-                        f"[Cantonese.ai API Error] Status {res.status_code}: {res.text}"
+                        f"[Cantonese.ai API Error] Status: {res.status_code}, Body: {res.text}"
                     )
 
         return {"text": reply_text, "audio_url": audio_url}
