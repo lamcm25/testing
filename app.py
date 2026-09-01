@@ -27,7 +27,7 @@ else:
 
 # Cantonese.ai Configuration
 CANTONESE_AI_API_KEY = os.environ.get("CANTONESE_AI_API_KEY")
-CANTONESE_AI_VOICE = os.environ.get("CANTONESE_AI_VOICE", "Cantonese girl")
+CANTONESE_AI_VOICE = os.environ.get("CANTONESE_AI_VOICE")  # Copied 聲線ID
 CANTONESE_AI_MODEL = os.environ.get("CANTONESE_AI_MODEL", "V8.2")
 
 SYSTEM_PROMPT = """
@@ -68,10 +68,6 @@ class Query(BaseModel):
 
 @app.post("/api/ask")
 async def ask(query: Query):
-    tts_error = None
-    reply_text = ""
-    audio_url = None
-
     try:
         # 1. Text Generation
         response = await poe_client.chat.completions.create(
@@ -85,61 +81,63 @@ async def ask(query: Query):
         )
         reply_text = response.choices[0].message.content
 
-        # 2. Cantonese.ai TTS Generation
-        if not CANTONESE_AI_API_KEY:
-            tts_error = (
-                "CANTONESE_AI_API_KEY environment variable is not set."
-            )
-        else:
+        # 2. Cantonese.ai Audio Generation
+        audio_url = None
+        if CANTONESE_AI_API_KEY:
+            # Primary TTS endpoint for Cantonese.ai
             tts_url = "https://api.cantonese.ai/v1/tts"
             headers = {
                 "Authorization": f"Bearer {CANTONESE_AI_API_KEY}",
+                "x-api-key": CANTONESE_AI_API_KEY,
                 "Content-Type": "application/json",
             }
+
+            # Flexible payload structure covering voice_id, voice, text, and input
             payload = {
                 "text": reply_text,
+                "input": reply_text,
+                "voice_id": CANTONESE_AI_VOICE,
                 "voice": CANTONESE_AI_VOICE,
                 "model": CANTONESE_AI_MODEL,
                 "output_format": "mp3",
+                "response_format": "mp3",
             }
 
             async with httpx.AsyncClient(timeout=15.0) as client:
                 res = await client.post(tts_url, json=payload, headers=headers)
 
+                # Fallback to OpenAI-style audio endpoint if standard endpoint returns 404
+                if res.status_code == 404:
+                    tts_url = "https://api.cantonese.ai/v1/audio/speech"
+                    res = await client.post(
+                        tts_url, json=payload, headers=headers
+                    )
+
                 if res.status_code == 200:
                     content_type = res.headers.get("content-type", "")
-                    if "audio" in content_type:
+                    if "audio" in content_type or len(res.content) > 1000:
                         audio_b64 = base64.b64encode(res.content).decode(
                             "utf-8"
                         )
                         audio_url = f"data:audio/mp3;base64,{audio_b64}"
                     else:
-                        try:
-                            data = res.json()
-                            if "audio_base64" in data:
-                                audio_url = f"data:audio/mp3;base64,{data['audio_base64']}"
-                            elif "audio_url" in data:
-                                audio_url = data["audio_url"]
-                            elif "url" in data:
-                                audio_url = data["url"]
-                            else:
-                                tts_error = f"Unexpected JSON response format: {data}"
-                        except Exception as e:
-                            tts_error = f"Failed to parse audio response: {str(e)}"
+                        data = res.json()
+                        b64_str = (
+                            data.get("audio_base64")
+                            or data.get("audio")
+                            or data.get("data")
+                        )
+                        if b64_str:
+                            audio_url = f"data:audio/mp3;base64,{b64_str}"
+                        elif "audio_url" in data or "url" in data:
+                            audio_url = data.get("audio_url") or data.get("url")
                 else:
-                    tts_error = (
-                        f"Cantonese.ai API HTTP {res.status_code}: {res.text}"
+                    print(
+                        f"[Cantonese.ai Failed] Status: {res.status_code}, Body: {res.text}"
                     )
 
-        return {
-            "text": reply_text,
-            "audio_url": audio_url,
-            "tts_error": tts_error,
-        }
+        return {"text": reply_text, "audio_url": audio_url}
 
     except Exception as e:
-        return {
-            "text": f"Error: {str(e)}",
-            "audio_url": None,
-            "tts_error": str(e),
-        }
+        print(f"[Server Error]: {str(e)}")
+        return {"text": f"Error: {str(e)}", "audio_url": None}
