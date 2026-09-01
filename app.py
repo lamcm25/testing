@@ -1,5 +1,4 @@
 import os
-import time
 import json
 import requests
 from fastapi import FastAPI
@@ -32,7 +31,7 @@ class Query(BaseModel):
 @app.post("/api/ask")
 async def ask(query: Query):
     try:
-        # 1. AI Text Response from Poe
+        # 1. Generate Poe AI answer (1-2 seconds)
         response = poe_client.chat.completions.create(
             model="GPT-4o-Mini",
             messages=[
@@ -42,7 +41,8 @@ async def ask(query: Query):
         )
         reply_text = response.choices[0].message.content
 
-        # 2. D-ID Video Generation using ElevenLabs
+        # 2. Trigger D-ID generation asynchronously
+        talk_id = None
         if DID_API_KEY:
             did_headers = {
                 "Authorization": f"Basic {DID_API_KEY}",
@@ -66,31 +66,28 @@ async def ask(query: Query):
 
             talk_res = requests.post("https://api.d-id.com/talks", json=did_payload, headers=did_headers)
             talk_data = talk_res.json()
-
-            if talk_res.status_code not in [200, 201]:
-                err_msg = talk_data.get("message", str(talk_data))
-                return {"text": f"{reply_text} (D-ID Error: {err_msg})", "video_url": None}
-
             talk_id = talk_data.get("id")
 
-            # 3. Poll D-ID for completion status
-            video_url = None
-            if talk_id:
-                for _ in range(25):
-                    time.sleep(1)
-                    status_res = requests.get(f"https://api.d-id.com/talks/{talk_id}", headers=did_headers)
-                    status_data = status_res.json()
-                    
-                    if status_data.get("status") == "done":
-                        video_url = status_data.get("result_url")
-                        break
-                    elif status_data.get("status") == "error":
-                        err_detail = status_data.get("error", {})
-                        return {"text": f"{reply_text} (Animation Error: {err_detail})", "video_url": None}
-
-            return {"text": reply_text, "video_url": video_url}
-
-        return {"text": reply_text, "video_url": None}
+        return {"text": reply_text, "talk_id": talk_id}
 
     except Exception as e:
-        return {"text": f"Error: {str(e)}", "video_url": None}
+        return {"text": f"Error: {str(e)}", "talk_id": None}
+
+@app.get("/api/status/{talk_id}")
+async def check_status(talk_id: str):
+    if not DID_API_KEY or not talk_id:
+        return {"status": "error", "video_url": None}
+
+    did_headers = {
+        "Authorization": f"Basic {DID_API_KEY}",
+        "Content-Type": "application/json"
+    }
+
+    status_res = requests.get(f"https://api.d-id.com/talks/{talk_id}", headers=did_headers)
+    status_data = status_res.json()
+
+    return {
+        "status": status_data.get("status"),
+        "video_url": status_data.get("result_url"),
+        "error": status_data.get("error")
+    }
