@@ -1,0 +1,6 @@
+*.py
+requirements.txt
+Procfile
+Dockerfile
+render.yaml
+.env
