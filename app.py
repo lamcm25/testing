@@ -32,7 +32,7 @@ class Query(BaseModel):
 @app.post("/api/ask")
 async def ask(query: Query):
     try:
-        # 1. Generate Cantonese response from Poe API
+        # 1. AI Text Response from Poe
         response = poe_client.chat.completions.create(
             model="GPT-4o-Mini",
             messages=[
@@ -42,7 +42,7 @@ async def ask(query: Query):
         )
         reply_text = response.choices[0].message.content
 
-        # 2. Trigger D-ID Video Generation
+        # 2. D-ID Video Generation using ElevenLabs
         if DID_API_KEY:
             did_headers = {
                 "Authorization": f"Basic {DID_API_KEY}",
@@ -58,7 +58,8 @@ async def ask(query: Query):
                     "input": reply_text,
                     "provider": {
                         "type": "elevenlabs",
-                        "voice_id": ELEVENLABS_VOICE_ID or "21m00Tcm4TlvDq8ikWAM"
+                        "voice_id": ELEVENLABS_VOICE_ID,
+                        "model_id": "eleven_multilingual_v2"
                     }
                 }
             }
