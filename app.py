@@ -16,11 +16,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Use AsyncOpenAI for non-blocking execution
-poe_client = AsyncOpenAI(
-    api_key=os.environ.get("OPENAI_API_KEY") or os.environ.get("POE_API_KEY"),
-    base_url=os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1"),
-)
+# Detect whether to route to Poe API or standard OpenAI API
+POE_KEY = os.environ.get("POE_API_KEY")
+OPENAI_KEY = os.environ.get("OPENAI_API_KEY")
+
+if POE_KEY:
+    poe_client = AsyncOpenAI(api_key=POE_KEY, base_url="https://api.poe.com/v1")
+else:
+    poe_client = AsyncOpenAI(api_key=OPENAI_KEY)
 
 ELEVENLABS_API_KEY = os.environ.get("ELEVENLABS_API_KEY")
 ELEVENLABS_VOICE_ID = os.environ.get("ELEVENLABS_VOICE_ID")
@@ -64,21 +67,21 @@ class Query(BaseModel):
 @app.post("/api/ask")
 async def ask(query: Query):
     try:
-        # 1. Fast LLM Text Generation
+        # 1. Text Generation
         response = await poe_client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="GPT-4o-Mini" if POE_KEY else "gpt-4o-mini",
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT.strip()},
                 {"role": "user", "content": query.message},
             ],
             temperature=0.5,
-            max_tokens=100,  # Shorter text = faster eleven_v3 synthesis
+            max_tokens=100,
         )
         reply_text = response.choices[0].message.content
 
+        # 2. ElevenLabs Text-to-Speech
         audio_url = None
         if ELEVENLABS_API_KEY and ELEVENLABS_VOICE_ID:
-            # Added optimize_streaming_latency=3 to speed up eleven_v3 generation
             tts_url = f"https://api.elevenlabs.io/v1/text-to-speech/{ELEVENLABS_VOICE_ID}?optimize_streaming_latency=3"
             tts_headers = {
                 "xi-api-key": ELEVENLABS_API_KEY,
