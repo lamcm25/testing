@@ -148,7 +148,7 @@
     <p id="status">按下語音按鈕發問，或者直接打字都得！</p>
   </div>
 
-  <script>
+<script>
     async function sendQueryToBackend(studentQuery) {
       if (!studentQuery.trim()) return;
 
@@ -162,7 +162,9 @@
         });
 
         const data = await response.json();
-        document.getElementById('status').innerText = data.text;
+        // Automatically extracts whichever field key your backend uses
+        const botReply = data.text || data.response || data.reply || data.message || data.answer || JSON.stringify(data);
+        document.getElementById('status').innerText = botReply;
       } catch (error) {
         document.getElementById('status').innerText = "連線失敗，請確認後端 Server 是否正常運作。";
       }
