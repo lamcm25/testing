@@ -14,7 +14,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+# Configured to use Poe API key and Poe base URL
+client = OpenAI(
+    api_key=os.environ.get("POE_API_KEY"),
+    base_url="https://api.poe.com/v1"
+)
 
 class Query(BaseModel):
     message: str
@@ -23,7 +27,7 @@ class Query(BaseModel):
 async def ask(query: Query):
     try:
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="GPT-4o-Mini",  # Poe model name
             messages=[
                 {"role": "system", "content": "你是一位親切的小學人文科 AI 導師，請用語音簡潔、生動的中文/廣東話回答小學生的問題。"},
                 {"role": "user", "content": query.message}
