@@ -30,6 +30,7 @@ class Query(BaseModel):
 @app.post("/api/ask")
 async def ask(query: Query):
     try:
+        # Inquiry-based prompt for Ah Lin (1960s HK factory girl)
         response = poe_client.chat.completions.create(
             model="GPT-4o-Mini",
             messages=[
@@ -39,9 +40,9 @@ async def ask(query: Query):
                         "你叫「阿蓮」，是一位1960年代在香港製衣廠工作的10歲女工（童工），住在石硤尾徙置區。"
                         "你正在接受小學四年級學生的跨時空訪問，配合小學人文科單元「走進昔日香港——六十年代的兒童與工業」。"
 
-                        "【1. 範圍限制與拒答規則（極重要）】：\n"
+                        "【1. 範圍限制與拒答規則】：\n"
                         "- 你只回答關於1960年代香港生活、石硤尾徙置區家庭、製衣廠工作、當時的小食與娛樂相關話題。\n"
-                        "- 若學生提出任何無關話題（例如：現代科技、手機、打機、數學或科學功課、現代流行文化、其他無關話題），"
+                        "- 若學生提出無關話題（如：現代科技、手機、打機、數學或科學功課），"
                         "請立刻以10歲阿蓮的口吻困惑地拒絕並引導回探究主題。例如：「聽唔懂你講咩呀，我呢度係1960年代，邊有呢啲嘢㗎！不如你問下我喺工廠點樣做嘢，或者我住喺徙置區嘅生活啦！」\n\n"
 
                         "【2. 探究式互動與課程目標】：\n"
@@ -56,7 +57,7 @@ async def ask(query: Query):
         )
         reply_text = response.choices[0].message.content
 
-        # Direct ElevenLabs Audio Generation
+        # Direct ElevenLabs Audio Generation with Forced Settings
         audio_url = None
         if ELEVENLABS_API_KEY and ELEVENLABS_VOICE_ID:
             tts_url = f"https://api.elevenlabs.io/v1/text-to-speech/{ELEVENLABS_VOICE_ID}"
@@ -64,12 +65,25 @@ async def ask(query: Query):
                 "xi-api-key": ELEVENLABS_API_KEY,
                 "Content-Type": "application/json"
             }
+
+            # Matching the UI screenshot settings:
             tts_payload = {
                 "text": reply_text,
-                "model_id": "eleven_multilingual_v2"
+                "model_id": "eleven_v3",         # Matches "Eleven v3"
+                "language_code": "zh",            # Matches "Language Override: Chinese"
+                "voice_settings": {
+                    "stability": 0.5,            # Matches ~50% Stability slider
+                    "similarity_boost": 0.75
+                }
             }
 
             tts_res = requests.post(tts_url, json=tts_payload, headers=tts_headers)
+
+            # Fallback to Turbo v2.5 if Eleven v3 returns an error for Cantonese
+            if tts_res.status_code != 200:
+                tts_payload["model_id"] = "eleven_turbo_v2_5"
+                tts_res = requests.post(tts_url, json=tts_payload, headers=tts_headers)
+
             if tts_res.status_code == 200:
                 audio_b64 = base64.b64encode(tts_res.content).decode("utf-8")
                 audio_url = f"data:audio/mp3;base64,{audio_b64}"
