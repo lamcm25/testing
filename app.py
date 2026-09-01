@@ -1,5 +1,5 @@
 import os
-import json
+import base64
 import requests
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -21,7 +21,6 @@ poe_client = OpenAI(
     base_url="https://api.poe.com/v1"
 )
 
-DID_API_KEY = os.environ.get("DID_API_KEY")
 ELEVENLABS_API_KEY = os.environ.get("ELEVENLABS_API_KEY")
 ELEVENLABS_VOICE_ID = os.environ.get("ELEVENLABS_VOICE_ID")
 
@@ -31,7 +30,7 @@ class Query(BaseModel):
 @app.post("/api/ask")
 async def ask(query: Query):
     try:
-        # 1. Generate Poe AI answer (1-2 seconds)
+        # 1. AI Text Response from Poe AI
         response = poe_client.chat.completions.create(
             model="GPT-4o-Mini",
             messages=[
@@ -41,53 +40,25 @@ async def ask(query: Query):
         )
         reply_text = response.choices[0].message.content
 
-        # 2. Trigger D-ID generation asynchronously
-        talk_id = None
-        if DID_API_KEY:
-            did_headers = {
-                "Authorization": f"Basic {DID_API_KEY}",
+        # 2. Direct ElevenLabs Audio Generation
+        audio_url = None
+        if ELEVENLABS_API_KEY and ELEVENLABS_VOICE_ID:
+            tts_url = f"https://api.elevenlabs.io/v1/text-to-speech/{ELEVENLABS_VOICE_ID}"
+            tts_headers = {
+                "xi-api-key": ELEVENLABS_API_KEY,
                 "Content-Type": "application/json"
             }
-            if ELEVENLABS_API_KEY:
-                did_headers["x-api-key-external"] = json.dumps({"elevenlabs": ELEVENLABS_API_KEY})
-
-            did_payload = {
-                "source_url": "https://cdn.jsdelivr.net/gh/lamcm25/testing@main/avatar2.png",
-                "script": {
-                    "type": "text",
-                    "input": reply_text,
-                    "provider": {
-                        "type": "elevenlabs",
-                        "voice_id": ELEVENLABS_VOICE_ID,
-                        "model_id": "eleven_multilingual_v2"
-                    }
-                }
+            tts_payload = {
+                "text": reply_text,
+                "model_id": "eleven_multilingual_v2"
             }
 
-            talk_res = requests.post("https://api.d-id.com/talks", json=did_payload, headers=did_headers)
-            talk_data = talk_res.json()
-            talk_id = talk_data.get("id")
+            tts_res = requests.post(tts_url, json=tts_payload, headers=tts_headers)
+            if tts_res.status_code == 200:
+                audio_b64 = base64.b64encode(tts_res.content).decode("utf-8")
+                audio_url = f"data:audio/mp3;base64,{audio_b64}"
 
-        return {"text": reply_text, "talk_id": talk_id}
+        return {"text": reply_text, "audio_url": audio_url}
 
     except Exception as e:
-        return {"text": f"Error: {str(e)}", "talk_id": None}
-
-@app.get("/api/status/{talk_id}")
-async def check_status(talk_id: str):
-    if not DID_API_KEY or not talk_id:
-        return {"status": "error", "video_url": None}
-
-    did_headers = {
-        "Authorization": f"Basic {DID_API_KEY}",
-        "Content-Type": "application/json"
-    }
-
-    status_res = requests.get(f"https://api.d-id.com/talks/{talk_id}", headers=did_headers)
-    status_data = status_res.json()
-
-    return {
-        "status": status_data.get("status"),
-        "video_url": status_data.get("result_url"),
-        "error": status_data.get("error")
-    }
+        return {"text": f"Error: {str(e)}", "audio_url": None}
