@@ -52,7 +52,7 @@ async def ask(query: Query):
                 did_headers["x-api-key-external"] = json.dumps({"elevenlabs": ELEVENLABS_API_KEY})
 
             did_payload = {
-                "source_url": "https://testing824.vercel.app/avatar2.png",
+                "source_url": "https://cdn.jsdelivr.net/gh/lamcm25/testing@main/avatar2.png",
                 "script": {
                     "type": "text",
                     "input": reply_text,
