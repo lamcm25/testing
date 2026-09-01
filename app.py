@@ -30,17 +30,26 @@ class Query(BaseModel):
 @app.post("/api/ask")
 async def ask(query: Query):
     try:
-        # 1. AI Text Response from Poe AI
+        # Inquiry-based prompt for Ah Lin (1960s HK factory girl)
         response = poe_client.chat.completions.create(
             model="GPT-4o-Mini",
             messages=[
-                {"role": "system", "content": "你是一位親切的小學人文科 AI 導師，請用語音簡潔、生動的廣東話回答小學生的問題（回答請保持在50字以內）。"},
+                {
+                    "role": "system", 
+                    "content": (
+                        "你叫「阿蓮」，是一位1960年代在香港製衣廠工作的10歲女工，住在石硤尾徙置區。"
+                        "你正在接受現代小學四年級學生的訪問。"
+                        "【探究式互動原則】：切勿一次過回答所有細節！學生問什麼，你才回答該部分。"
+                        "回答必須簡潔（50-70字以內），使用1960年代廣東話口語（如：飛仔、出糧、查牌、搭𨋢、車衣、徙置區、鹹薄罉）。"
+                        "絕不能出現現代詞彙。若學生問題太寬泛，請只說出小部分資料並引導對方追問。"
+                    )
+                },
                 {"role": "user", "content": query.message}
             ]
         )
         reply_text = response.choices[0].message.content
 
-        # 2. Direct ElevenLabs Audio Generation
+        # Direct ElevenLabs Audio Generation
         audio_url = None
         if ELEVENLABS_API_KEY and ELEVENLABS_VOICE_ID:
             tts_url = f"https://api.elevenlabs.io/v1/text-to-speech/{ELEVENLABS_VOICE_ID}"
