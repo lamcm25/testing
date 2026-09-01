@@ -32,7 +32,7 @@ class Query(BaseModel):
 @app.post("/api/ask")
 async def ask(query: Query):
     try:
-        # 1. Ask Poe AI
+        # 1. Generate Cantonese response from Poe API
         response = poe_client.chat.completions.create(
             model="GPT-4o-Mini",
             messages=[
@@ -42,7 +42,7 @@ async def ask(query: Query):
         )
         reply_text = response.choices[0].message.content
 
-        # 2. Trigger D-ID video generation
+        # 2. Trigger D-ID Video Generation
         if DID_API_KEY:
             did_headers = {
                 "Authorization": f"Basic {DID_API_KEY}",
@@ -52,7 +52,7 @@ async def ask(query: Query):
                 did_headers["x-api-key-external"] = json.dumps({"elevenlabs": ELEVENLABS_API_KEY})
 
             did_payload = {
-                "source_url": "https://raw.githubusercontent.com/lamcm25/testing/main/avatar2.png",
+                "source_url": "https://testing824.vercel.app/avatar2.png",
                 "script": {
                     "type": "text",
                     "input": reply_text,
@@ -64,20 +64,28 @@ async def ask(query: Query):
             }
 
             talk_res = requests.post("https://api.d-id.com/talks", json=did_payload, headers=did_headers)
-            talk_id = talk_res.json().get("id")
+            talk_data = talk_res.json()
 
-            # 3. Poll D-ID until completed
+            if talk_res.status_code not in [200, 201]:
+                err_msg = talk_data.get("message", str(talk_data))
+                return {"text": f"{reply_text} (D-ID Error: {err_msg})", "video_url": None}
+
+            talk_id = talk_data.get("id")
+
+            # 3. Poll D-ID for completion status
             video_url = None
             if talk_id:
                 for _ in range(25):
                     time.sleep(1)
                     status_res = requests.get(f"https://api.d-id.com/talks/{talk_id}", headers=did_headers)
                     status_data = status_res.json()
+                    
                     if status_data.get("status") == "done":
                         video_url = status_data.get("result_url")
                         break
                     elif status_data.get("status") == "error":
-                        break
+                        err_detail = status_data.get("error", {})
+                        return {"text": f"{reply_text} (Animation Error: {err_detail})", "video_url": None}
 
             return {"text": reply_text, "video_url": video_url}
 
