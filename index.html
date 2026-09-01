@@ -109,16 +109,14 @@
 
     function playVideoIfBlocked() {
       if (videoEl.style.display === 'block' && videoEl.paused) {
-        videoEl.play().then(() => {
-          statusEl.innerText = statusEl.dataset.replyText || "";
-        }).catch(err => console.log("Click play failed:", err));
+        videoEl.play().catch(err => console.log("Click play failed:", err));
       }
     }
 
     async function sendQueryToBackend(studentQuery) {
       if (!studentQuery.trim()) return;
 
-      statusEl.innerText = "AI 正在思考並生成聲音動畫...";
+      statusEl.innerText = "AI 正在思考中...";
 
       try {
         const response = await fetch('https://hk-primary-tutor-backend.onrender.com/api/ask', {
@@ -132,34 +130,69 @@
         statusEl.innerText = replyText;
         statusEl.dataset.replyText = replyText;
 
-        if (data.video_url) {
-          imgEl.style.display = 'none';
-          videoEl.style.display = 'block';
-          videoEl.src = data.video_url;
-          videoEl.currentTime = 0;
-          videoEl.muted = false;
-
-          videoEl.play().catch(e => {
-            console.log("Autoplay blocked:", e);
-            statusEl.innerText = replyText + "\n(🔊 請按一下頭像播放聲音影片)";
-          });
-
-          videoEl.onended = () => {
-            videoEl.style.display = 'none';
-            imgEl.style.display = 'block';
-          };
-
-          videoEl.onerror = (err) => {
-            console.error("Video load error:", err);
-            videoEl.style.display = 'none';
-            imgEl.style.display = 'block';
-            statusEl.innerText = replyText + " (影片載入失敗)";
-          };
+        if (data.talk_id) {
+          statusEl.innerText = replyText + "\n(🎬 動畫生成中...)";
+          pollForVideo(data.talk_id);
         }
       } catch (error) {
         console.error("Fetch error:", error);
         statusEl.innerText = "連線失敗，請稍後再試。";
       }
+    }
+
+    async function pollForVideo(talkId) {
+      let attempts = 0;
+      const maxAttempts = 30;
+
+      const interval = setInterval(async () => {
+        attempts++;
+        if (attempts > maxAttempts) {
+          clearInterval(interval);
+          statusEl.innerText = statusEl.dataset.replyText + " (影片生成超時)";
+          return;
+        }
+
+        try {
+          const res = await fetch(`https://hk-primary-tutor-backend.onrender.com/api/status/${talkId}`);
+          const statusData = await res.json();
+
+          if (statusData.status === 'done' && statusData.video_url) {
+            clearInterval(interval);
+            statusEl.innerText = statusEl.dataset.replyText;
+            playVideo(statusData.video_url);
+          } else if (statusData.status === 'error') {
+            clearInterval(interval);
+            console.error("D-ID Error:", statusData.error);
+            statusEl.innerText = statusEl.dataset.replyText + " (影片生成錯誤，請確認 Voice ID)";
+          }
+        } catch (err) {
+          console.error("Polling error:", err);
+        }
+      }, 2000);
+    }
+
+    function playVideo(videoUrl) {
+      imgEl.style.display = 'none';
+      videoEl.style.display = 'block';
+      videoEl.src = videoUrl;
+      videoEl.currentTime = 0;
+      videoEl.muted = false;
+
+      videoEl.play().catch(e => {
+        console.log("Autoplay blocked:", e);
+        statusEl.innerText = statusEl.dataset.replyText + "\n(🔊 請按一下頭像播放聲音影片)";
+      });
+
+      videoEl.onended = () => {
+        videoEl.style.display = 'none';
+        imgEl.style.display = 'block';
+      };
+
+      videoEl.onerror = (err) => {
+        console.error("Video load error:", err);
+        videoEl.style.display = 'none';
+        imgEl.style.display = 'block';
+      };
     }
 
     function recordAndAsk() {
