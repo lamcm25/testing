@@ -1,4 +1,6 @@
 import os
+import time
+import requests
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -14,11 +16,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Configured to use Poe API key and Poe base URL
-client = OpenAI(
+poe_client = OpenAI(
     api_key=os.environ.get("POE_API_KEY"),
     base_url="https://api.poe.com/v1"
 )
+
+DID_API_KEY = os.environ.get("DID_API_KEY")
+ELEVENLABS_API_KEY = os.environ.get("ELEVENLABS_API_KEY")
+ELEVENLABS_VOICE_ID = os.environ.get("ELEVENLABS_VOICE_ID")
 
 class Query(BaseModel):
     message: str
@@ -26,14 +31,56 @@ class Query(BaseModel):
 @app.post("/api/ask")
 async def ask(query: Query):
     try:
-        response = client.chat.completions.create(
-            model="GPT-4o-Mini",  # Poe model name
+        # 1. Generate text response from Poe API
+        response = poe_client.chat.completions.create(
+            model="GPT-4o-Mini",
             messages=[
-                {"role": "system", "content": "你是一位親切的小學人文科 AI 導師，請用語音簡潔、生動的中文/廣東話回答小學生的問題。"},
+                {"role": "system", "content": "你是一位親切的小學人文科 AI 導師，請用語音簡潔、生動的廣東話回答小學生的問題（答複請保持在60字以內）。"},
                 {"role": "user", "content": query.message}
             ]
         )
-        reply = response.choices[0].message.content
-        return {"text": reply}
+        reply_text = response.choices[0].message.content
+
+        # 2. Trigger D-ID video creation with ElevenLabs TTS
+        if DID_API_KEY:
+            did_headers = {
+                "Authorization": f"Basic {DID_API_KEY}",
+                "Content-Type": "application/json"
+            }
+            if ELEVENLABS_API_KEY:
+                did_headers["x-api-key-external"] = f'{{"elevenlabs": "{ELEVENLABS_API_KEY}"}}'
+
+            did_payload = {
+                "source_url": "https://testing824.vercel.app/avatar.png",
+                "script": {
+                    "type": "text",
+                    "input": reply_text,
+                    "provider": {
+                        "type": "elevenlabs",
+                        "voice_id": ELEVENLABS_VOICE_ID or "21m00Tcm4TlvDq8ikWAM"
+                    }
+                }
+            }
+
+            talk_res = requests.post("https://api.d-id.com/talks", json=did_payload, headers=did_headers)
+            talk_id = talk_res.json().get("id")
+
+            # 3. Poll D-ID until the video finishes generating
+            video_url = None
+            if talk_id:
+                for _ in range(20):
+                    time.sleep(1)
+                    status_res = requests.get(f"https://api.d-id.com/talks/{talk_id}", headers=did_headers)
+                    status_data = status_res.json()
+                    if status_data.get("status") == "done":
+                        video_url = status_data.get("result_url")
+                        break
+                    elif status_data.get("status") == "error":
+                        break
+
+            return {"text": reply_text, "video_url": video_url}
+
+        return {"text": reply_text, "video_url": None}
+
     except Exception as e:
-        return {"text": f"Error: {str(e)}"}
+        return {"text": f"Error: {str(e)}", "video_url": None}
