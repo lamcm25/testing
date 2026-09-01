@@ -3,14 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>小學人文科學學習夥伴</title>
+  <title>跨時空訪問：1960年代工廠妹阿蓮</title>
   <style>
     body { 
-      background: url('inno.jpeg') no-repeat center center fixed; 
+      background: url('factory.jpeg') no-repeat center center fixed; 
       background-size: cover; 
       color: white; 
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
-      text-align: center; 
       padding: 20px; 
       margin: 0;
       min-height: 100vh;
@@ -18,21 +17,45 @@
       align-items: center;
       justify-content: center;
     }
-    .card { 
+    .main-container {
+      display: flex;
+      gap: 20px;
       width: 100%;
-      max-width: 420px; 
+      max-width: 900px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    .card { 
       background: rgba(30, 41, 59, 0.88); 
       backdrop-filter: blur(12px);
       padding: 24px; 
       border-radius: 24px; 
       box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
       border: 1px solid rgba(255, 255, 255, 0.1);
+      box-sizing: border-box;
     }
-    h2 { margin-top: 0; color: #63b3ed; font-size: 22px; }
+    .left-panel {
+      flex: 1;
+      min-width: 320px;
+      max-width: 420px;
+      text-align: center;
+    }
+    .right-panel {
+      flex: 1;
+      min-width: 300px;
+      max-width: 420px;
+      display: flex;
+      flex-direction: column;
+      max-height: 580px;
+    }
+    h2, h3 { margin-top: 0; color: #63b3ed; }
+    h2 { font-size: 20px; }
+    h3 { font-size: 17px; border-bottom: 1px solid rgba(255,255,255,0.15); padding-bottom: 8px; margin-bottom: 12px; }
+
     .avatar-container { 
-      width: 280px; 
-      height: 280px; 
-      margin: 15px auto; 
+      width: 240px; 
+      height: 240px; 
+      margin: 10px auto; 
       border-radius: 20px; 
       overflow: hidden; 
       border: 3px solid #63b3ed; 
@@ -55,11 +78,12 @@
       font-size: 16px; 
       font-weight: bold;
       cursor: pointer; 
-      margin: 15px 0; 
+      margin: 12px 0; 
       transition: background 0.2s;
+      width: 100%;
     }
     .btn:hover { background: #2f855a; }
-    .input-box { display: flex; gap: 8px; margin-top: 10px; }
+    .input-box { display: flex; gap: 8px; margin-top: 5px; }
     input { 
       flex: 1; 
       padding: 12px; 
@@ -73,41 +97,88 @@
       background: #3182ce; 
       color: white; 
       border: none; 
-      padding: 12px 20px; 
+      padding: 12px 18px; 
       border-radius: 12px; 
       font-weight: bold;
       cursor: pointer;
     }
-    #status { margin-top: 15px; font-size: 14px; color: #cbd5e0; min-height: 40px; line-height: 1.4; }
+    #status { margin-top: 12px; font-size: 14px; color: #cbd5e0; min-height: 40px; line-height: 1.4; }
+
+    /* History Record Styling */
+    .history-list {
+      flex: 1;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding-right: 4px;
+    }
+    .history-item {
+      background: rgba(15, 23, 42, 0.6);
+      border-radius: 12px;
+      padding: 10px 14px;
+      border-left: 4px solid #63b3ed;
+      text-align: left;
+    }
+    .history-q {
+      font-weight: bold;
+      color: #90cdf4;
+      font-size: 13px;
+      margin-bottom: 4px;
+    }
+    .history-a {
+      color: #e2e8f0;
+      font-size: 13px;
+      line-height: 1.4;
+    }
+    .empty-history {
+      color: #a0aec0;
+      font-size: 13px;
+      text-align: center;
+      margin-top: 50px;
+    }
   </style>
 </head>
 <body>
 
-  <div class="card">
-    <h2>小學人文科學學習夥伴</h2>
-    
-    <div class="avatar-container">
-      <img id="avatar-img" src="avatar.png" alt="Avatar">
+  <div class="main-container">
+    <!-- Left Panel: Avatar & Interactive Box -->
+    <div class="card left-panel">
+      <h2>訪問對象：工廠妹阿蓮 (10歲)</h2>
+      
+      <div class="avatar-container">
+        <img id="avatar-img" src="main character.png" alt="阿蓮">
+      </div>
+
+      <button class="btn" onclick="recordAndAsk()">🎤 按此語音發問</button>
+
+      <div class="input-box">
+        <input type="text" id="text-input" placeholder="參考工作紙向阿蓮提問..." onkeypress="handleKeyPress(event)">
+        <button class="send" onclick="sendTextQuery()">傳送</button>
+      </div>
+
+      <p id="status">你好！我係阿蓮。你想了解我屋企、工廠定係平日生活？問我啦！</p>
     </div>
 
-    <button class="btn" onclick="recordAndAsk()">🎤 按此語音發問</button>
-
-    <div class="input-box">
-      <input type="text" id="text-input" placeholder="或在此打字發問..." onkeypress="handleKeyPress(event)">
-      <button class="send" onclick="sendTextQuery()">傳送</button>
+    <!-- Right Panel: Questions History for Worksheet Recording -->
+    <div class="card right-panel">
+      <h3>探究訪問紀錄 (填寫工作紙用)</h3>
+      <div id="history-list" class="history-list">
+        <p class="empty-history" id="empty-msg">請根據工作紙上的主題向阿蓮發問，收集到的資料會顯示在此處。</p>
+      </div>
     </div>
-
-    <p id="status">Hi! 你好呀！有咩問題想問我呢？</p>
   </div>
 
   <script>
     const statusEl = document.getElementById('status');
+    const historyList = document.getElementById('history-list');
+    const emptyMsg = document.getElementById('empty-msg');
     let currentAudio = null;
 
     async function sendQueryToBackend(studentQuery) {
       if (!studentQuery.trim()) return;
 
-      statusEl.innerText = "AI 正在思考並生成語音...";
+      statusEl.innerText = "阿蓮思考緊，準備回答你...";
 
       if (currentAudio) {
         currentAudio.pause();
@@ -125,11 +196,13 @@
         const replyText = data.text || "";
         statusEl.innerText = replyText;
 
+        addQuestionToHistory(studentQuery, replyText);
+
         if (data.audio_url) {
           currentAudio = new Audio(data.audio_url);
           currentAudio.play().catch(e => {
             console.log("Autoplay blocked:", e);
-            statusEl.innerText = replyText + "\n(🔊 請點擊畫面播放聲音)";
+            statusEl.innerText = replyText + "\n(🔊 請點擊畫面收聽阿蓮聲音)";
             document.body.onclick = () => {
               if (currentAudio) currentAudio.play();
               document.body.onclick = null;
@@ -142,6 +215,26 @@
       }
     }
 
+    function addQuestionToHistory(question, answer) {
+      if (emptyMsg) emptyMsg.style.display = 'none';
+
+      const item = document.createElement('div');
+      item.className = 'history-item';
+
+      const qEl = document.createElement('div');
+      qEl.className = 'history-q';
+      qEl.innerText = "❓ 訪問問題：" + question;
+
+      const aEl = document.createElement('div');
+      aEl.className = 'history-a';
+      aEl.innerText = "💬 阿蓮：" + answer;
+
+      item.appendChild(qEl);
+      item.appendChild(aEl);
+
+      historyList.prepend(item);
+    }
+
     function recordAndAsk() {
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
       if (!SpeechRecognition) {
@@ -152,7 +245,7 @@
       recognition.lang = 'zh-HK';
       recognition.start();
 
-      statusEl.innerText = "正在聆聽你的問題...";
+      statusEl.innerText = "正在聆聽你的訪問問題...";
 
       recognition.onresult = (event) => {
         sendQueryToBackend(event.results[0][0].transcript);
